@@ -62,7 +62,11 @@ double sequential_insert(int reps, int count, bool reverse) {
 			map_lookup(m, reverse ? -i : i, &v);
 		map_free(m);
 	}
-	return t.stop();
+	double elapsed = t.stop();
+#ifdef DEBUG_EFFICIENCY
+	printf("%8.2fms sequential reps=%i keys=%i reverse=%i\n", 1e3 * elapsed, reps, count, reverse);
+#endif
+	return elapsed;
 }
 
 enum Distribution {
@@ -116,9 +120,8 @@ void populate_actions(
 		Value value = value_distribution(rng);
 		Key key_high = 0;
 
-		// The range queries are always uniform over the space of intervals, regardless of the distribution.
+		// One endpoint is uniform, and the other is a distributed key from the container.
 		if (kind == RANGE_LOOKUP) {
-			key = key_distribution(rng);
 			key_high = key_distribution(rng);
 			if (key_high < key)
 				std::swap(key, key_high);
@@ -157,7 +160,11 @@ double random_usage(int action_count, int distinct_keys, Distribution dist, bool
 		}
 	}
 	map_free(m);
-	return t.stop();
+	double elapsed = t.stop();
+#ifdef DEBUG_EFFICIENCY
+	printf("%8.2fms random actions=%i keys=%i dist=%i range=%i\n", 1e3 * elapsed, action_count, distinct_keys, (int)dist, include_range_lookups ? range_query_size : -1);
+#endif
+	return elapsed;
 }
 
 template <typename T>
@@ -260,16 +267,17 @@ double run_benchmark() {
 	for (bool reverse : {false, true}) {
 		for (auto p : {
 			std::pair<int, int>
-			{100000, 10},
-			{10000, 100},
-			{1000, 1000},
-			{100, 10000},
-			{10, 100000},
-			{1, 1000000},
+			{1000000, 10},
+			{100000, 100},
+			{10000, 1000},
+			{1000, 10000},
+			{100, 100000},
+			{10, 1000000},
+			{1, 10000000},
 		}) {
 			double t = sequential_insert(p.first, p.second, reverse);
-			// There are twelve benchmarks in this section, so give them each 1/24 weight. 
-			scores.emplace_back(1 / 24.0, t);
+			// There are fourteen benchmarks in this section, so give them each 1/28 weight. 
+			scores.emplace_back(1 / 28.0, t);
 		}
 	}
 
@@ -278,19 +286,20 @@ double run_benchmark() {
 		for (auto distinct_keys : {
 			100,
 			1000,
-			10000, 
-			100000, 
+			10000,
+			100000,
 			1000000,
+			10000000,
 		}) {
-			scores.emplace_back(1 / 5.0, random_usage(1000000, distinct_keys, dist, false, 0));
+			scores.emplace_back(1 / 6.0, random_usage(10000000, distinct_keys, dist, false, 0));
 		}
 	}
 
 	// Section 3: Random range lookups. (Total weight: 2)
 	for (auto dist : {UNIFORM, ZIPF}) {
-		for (auto distinct_keys : {1000, 1000000}) {
+		for (auto distinct_keys : {10000, 1000000}) {
 			for (auto range_query_size : {4, 64, 1024}) {
-				int action_count = 200000;
+				int action_count = 2000000;
 				if (range_query_size == 1024)
 					action_count /= 4;
 				scores.emplace_back(
@@ -322,7 +331,9 @@ double run_benchmark() {
 	std::cout << "Benchmark efficiency: " << total_benchmark_time / efficiency_timer.stop() << std::endl;
 #endif
 	double geometric_mean_time = std::exp(log_accum / total_weight);
-	return 1.0 / geometric_mean_time;
+
+	// This scaling factor of 10 is selected to make std::map get more than one point on my laptop.
+	return 10.0 / geometric_mean_time;
 }
 
 int main() {
