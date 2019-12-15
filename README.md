@@ -4,24 +4,24 @@ There are five main sections of tests.
 The score is the reciprocal of the weighted geometric mean of the times on each test.
 
 * Linear insertion and lookup, forward and backward. (28 tests, total weight: ½)
-* Uniformly random insertion, lookup, and deletion. (6 tests, total weight: 1)
-* Zipf distributed insertion, lookup, and deletion. (6 tests, total weight: 1)
+* Uniformly random insertion, lookup, and deletion. (5 tests, total weight: 1)
+* Zipf distributed insertion, lookup, and deletion. (5 tests, total weight: 1)
 * Uniformly random insertion/deletion, and range queries. (6 tests, total weight: 1)
 * Zipf distributed insertion/deletion, and range queries. (6 tests, total weight: 1)
 
 The result is a number of points proportional to speed (that is, taking half the time on every test doubles your score).
 Testing the example implementation (which just uses `std::map`) on my laptop's i7-6600U CPU @ 2.60GHz I get:
 ```
-$ make && time ./test
+$ make && time ./test 
 g++ -Ofast -Wall -Wextra -o test test.cpp example.cpp
 Checking correctness... pass.
 Map size in bytes: 48
 
-Benchmark points: 5.63
+Benchmark points: 12.30
 
-real    2m23.676s
-user    2m19.208s
-sys     0m3.700s
+real    0m6.649s
+user    0m6.424s
+sys     0m0.220s
 ```
 
 ## Interface

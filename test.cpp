@@ -267,17 +267,16 @@ double run_benchmark() {
 	for (bool reverse : {false, true}) {
 		for (auto p : {
 			std::pair<int, int>
-			{1000000, 10},
-			{100000, 100},
-			{10000, 1000},
-			{1000, 10000},
-			{100, 100000},
-			{10, 1000000},
-			{1, 10000000},
+			{ 50000, 10},
+			{ 5000, 100},
+			{ 500, 1000},
+			{ 50, 10000},
+			{ 5, 100000},
+			{1, 1000000},
 		}) {
 			double t = sequential_insert(p.first, p.second, reverse);
-			// There are fourteen benchmarks in this section, so give them each 1/28 weight. 
-			scores.emplace_back(1 / 28.0, t);
+			// There are twelve benchmarks in this section, so give them each 1/24 weight.
+			scores.emplace_back(1 / 24.0, t);
 		}
 	}
 
@@ -289,9 +288,8 @@ double run_benchmark() {
 			10000,
 			100000,
 			1000000,
-			10000000,
 		}) {
-			scores.emplace_back(1 / 6.0, random_usage(10000000, distinct_keys, dist, false, 0));
+			scores.emplace_back(1 / 5.0, random_usage(1000000, distinct_keys, dist, false, 0));
 		}
 	}
 
@@ -299,7 +297,7 @@ double run_benchmark() {
 	for (auto dist : {UNIFORM, ZIPF}) {
 		for (auto distinct_keys : {10000, 1000000}) {
 			for (auto range_query_size : {4, 64, 1024}) {
-				int action_count = 2000000;
+				int action_count = 200000;
 				if (range_query_size == 1024)
 					action_count /= 4;
 				scores.emplace_back(
@@ -333,7 +331,7 @@ double run_benchmark() {
 	double geometric_mean_time = std::exp(log_accum / total_weight);
 
 	// This scaling factor of 10 is selected to make std::map get more than one point on my laptop.
-	return 10.0 / geometric_mean_time;
+	return 1.0 / geometric_mean_time;
 }
 
 int main() {
