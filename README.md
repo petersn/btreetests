@@ -18,6 +18,10 @@ Checking correctness... pass.
 Map size in bytes: 48
 
 Benchmark points: 5.63
+
+real    2m23.676s
+user    2m19.208s
+sys     0m3.700s
 ```
 
 ## Interface
