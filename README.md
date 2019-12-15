@@ -45,7 +45,7 @@ size_t map_lookup(void* m, Key key, Value* value_ptr);
 size_t map_delete(void* m, Key key, Value* value_ptr);
 
 // Find the first max_pairs_to_retrieve key/value pairs between key_low and key_high inclusive.
-// Return the number of pairs found. If key_value_pairs !== nullptr then write the results
+// Return the number of pairs found. If key_value_pairs != nullptr then write the results
 // to key_value_pairs[0], key_value_pairs[1], ...
 size_t map_lookup_range(
     void* m,
