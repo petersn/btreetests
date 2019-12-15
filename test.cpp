@@ -32,7 +32,7 @@ int approximate_zipf_sample(int max) {
 	double x = std::uniform_real_distribution<double>(0, 1)(rng);
 	double scale = std::log(max) + EULER_MASCHERONI;
 	double result = std::exp(x * scale - EULER_MASCHERONI);
-	return std::ceil(result);
+	return std::round(result);
 }
 
 struct Timer {

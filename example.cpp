@@ -7,7 +7,7 @@ extern "C" {
 	#include "interface.h"
 }
 
-typedef std::map<int64_t, int64_t> Map;
+typedef std::map<Key, Value> Map;
 
 size_t map_size = sizeof(Map);
 
