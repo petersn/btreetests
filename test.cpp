@@ -259,55 +259,7 @@ void check_correctness() {
 	map_free(m);
 }
 
-double run_benchmark() {
-	Timer efficiency_timer;
-	std::vector<std::pair<double, double>> scores;
-
-	// Section 1: Linear insertions followed by linear lookup. (Total weight: 0.5)
-	for (bool reverse : {false, true}) {
-		for (auto p : {
-			std::pair<int, int>
-			{ 50000, 10},
-			{ 5000, 100},
-			{ 500, 1000},
-			{ 50, 10000},
-			{ 5, 100000},
-			{1, 1000000},
-		}) {
-			double t = sequential_insert(p.first, p.second, reverse);
-			// There are twelve benchmarks in this section, so give them each 1/24 weight.
-			scores.emplace_back(1 / 24.0, t);
-		}
-	}
-
-	// Section 2: Random insertions, deletions, and lookups. (Total weight: 2)
-	for (auto dist : {UNIFORM, ZIPF}) {
-		for (auto distinct_keys : {
-			100,
-			1000,
-			10000,
-			100000,
-			1000000,
-		}) {
-			scores.emplace_back(1 / 5.0, random_usage(1000000, distinct_keys, dist, false, 0));
-		}
-	}
-
-	// Section 3: Random range lookups. (Total weight: 2)
-	for (auto dist : {UNIFORM, ZIPF}) {
-		for (auto distinct_keys : {10000, 1000000}) {
-			for (auto range_query_size : {4, 64, 1024}) {
-				int action_count = 200000;
-				if (range_query_size == 1024)
-					action_count /= 4;
-				scores.emplace_back(
-					1 / 6.0,
-					random_usage(action_count, distinct_keys, dist, true, range_query_size)
-				);
-			}
-		}
-	}
-
+double weighted_points(const std::vector<std::pair<double, double>> scores, double target_weight) {
 	// Compute a weighted geometric mean time.
 	double total_benchmark_time = 0;
 	double log_accum = 0;
@@ -324,14 +276,85 @@ double run_benchmark() {
 		std::cout << " ms: " << 1e3 * p.second << std::endl;
 #endif
 	}
-	assert(fabs(total_weight - 4.5) < 1e-6);
+	assert(fabs(total_weight - target_weight) < 1e-6);
 #ifdef DEBUG_EFFICIENCY
-	std::cout << "Benchmark efficiency: " << total_benchmark_time / efficiency_timer.stop() << std::endl;
+//	std::cout << "Benchmark efficiency: " << total_benchmark_time / efficiency_timer.stop() << std::endl;
 #endif
 	double geometric_mean_time = std::exp(log_accum / total_weight);
 
-	// This scaling factor of 10 is selected to make std::map get more than one point on my laptop.
 	return 1.0 / geometric_mean_time;
+}
+
+double run_benchmark() {
+//	Timer efficiency_timer;
+
+	// Section 1: Linear insertions followed by linear lookup. (Total weight: 0.5)
+	std::vector<std::pair<double, double>> section1_scores;
+	for (bool reverse : {false, true}) {
+		for (auto p : {
+			std::pair<int, int>
+			{ 50000, 10},
+			{ 5000, 100},
+			{ 500, 1000},
+			{ 50, 10000},
+			{ 5, 100000},
+			{1, 1000000},
+		}) {
+			double t = sequential_insert(p.first, p.second, reverse);
+			// There are twelve benchmarks in this section, so give them each 1/24 weight.
+			section1_scores.emplace_back(1 / 24.0, t);
+		}
+	}
+
+	// Section 2: Random insertions, deletions, and lookups. (Total weight: 2)
+	std::vector<std::pair<double, double>> section2_scores;
+	std::vector<std::pair<double, double>> section2_scores_uniform;
+	std::vector<std::pair<double, double>> section2_scores_zipf;
+	for (auto dist : {UNIFORM, ZIPF}) {
+		for (auto distinct_keys : {
+			100,
+			1000,
+			10000,
+			100000,
+			1000000,
+		}) {
+			section2_scores.emplace_back(1 / 5.0, random_usage(1000000, distinct_keys, dist, false, 0));
+			(dist == UNIFORM ? section2_scores_uniform : section2_scores_zipf).push_back(section2_scores.back());
+		}
+	}
+
+	// Section 3: Random range lookups. (Total weight: 2)
+	std::vector<std::pair<double, double>> section3_scores;
+	std::vector<std::pair<double, double>> section3_scores_uniform;
+	std::vector<std::pair<double, double>> section3_scores_zipf;
+	for (auto dist : {UNIFORM, ZIPF}) {
+		for (auto distinct_keys : {10000, 1000000}) {
+			for (auto range_query_size : {4, 64, 1024}) {
+				int action_count = 200000;
+				if (range_query_size == 1024)
+					action_count /= 4;
+				section3_scores.emplace_back(
+					1 / 6.0,
+					random_usage(action_count, distinct_keys, dist, true, range_query_size)
+				);
+				(dist == UNIFORM ? section3_scores_uniform : section3_scores_zipf).push_back(section3_scores.back());
+			}
+		}
+	}
+
+	printf("Section 1: Linear insertion points:   %.2f\n", weighted_points(section1_scores, 0.5)         / 1.2);
+	printf("Section 2: Random usage points:       %.2f\n", weighted_points(section2_scores, 2.0)         / 0.7);
+	printf("    Uniform random usage points:      %.2f\n", weighted_points(section2_scores_uniform, 1.0) / 0.7);
+	printf("    Zipf random usage points:         %.2f\n", weighted_points(section2_scores_zipf, 1.0)    / 0.7);
+	printf("Section 3: Random range query points: %.2f\n", weighted_points(section3_scores, 2.0)         / 1.6);
+	printf("    Uniform random usage points:      %.2f\n", weighted_points(section3_scores_uniform, 1.0) / 1.6);
+	printf("    Zipf random usage points:         %.2f\n", weighted_points(section3_scores_zipf, 1.0)    / 1.6);
+
+	std::vector<std::pair<double, double>> scores;
+	scores.insert(scores.end(), section1_scores.begin(), section1_scores.end());
+	scores.insert(scores.end(), section2_scores.begin(), section2_scores.end());
+	scores.insert(scores.end(), section3_scores.begin(), section3_scores.end());
+	return weighted_points(scores, 4.5);
 }
 
 int main() {
