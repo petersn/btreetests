@@ -1,8 +1,8 @@
 
 #include <stdint.h>
 
-typedef int64_t Key;
-typedef int64_t Value;
+typedef uint64_t Key;
+typedef uint64_t Value;
 
 typedef struct KVPair {
 	Key key;
