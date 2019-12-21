@@ -7,7 +7,7 @@ CXXFLAGS=-Ofast -Wall -Wextra -g
 
 all: ordered unordered
 ordered: build/std_map build/rust_btreemap build/absl_btree_map build/judy
-unordered: build/std_unordered_map build/absl_flat_hash_map
+unordered: build/std_unordered_map build/absl_flat_hash_map build/rust_hashmap
 
 # C++: std::map
 build/std_map: test.cpp std_map.cpp
@@ -25,6 +25,15 @@ build/librust_btreemap.a: rust_btreemap.rs
 	rustc -g -O -o $@ $^
 
 build/rust_btreemap: test.cpp build/librust_btreemap.a
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) -o $@ $^ -pthread -ldl
+
+# Rust: std::collections::HashMap
+build/librust_hashmap.a: rust_hashmap.rs
+	mkdir -p build
+	rustc -g -O -o $@ $^
+
+build/rust_hashmap: test.cpp build/librust_hashmap.a
 	mkdir -p build
 	$(CXX) $(CXXFLAGS) -o $@ $^ -pthread -ldl
 
