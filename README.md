@@ -10,19 +10,31 @@ The score is the reciprocal of the weighted geometric mean of the times on each 
 * Zipf distributed insertion/deletion, and range queries. (6 tests, total weight: 1)
 
 The result is a number of points proportional to speed (that is, taking half the time on every test doubles your score).
-Testing the example implementation (which just uses `std::map`) on my laptop's i7-6600U CPU @ 2.60GHz I get:
+Testing the example implementation (which just uses `std::map`) on my laptop's i7-9750H CPU @ 2.60GHz I get:
 ```
-$ make && time ./test 
-g++ -Ofast -Wall -Wextra -o test test.cpp example.cpp
-Checking correctness... pass.
-Map size in bytes: 48
+$ make build/std_map && time ./build/std_map
+mkdir -p build
+clang++ -Ofast -Wall -Wextra -g -o build/std_map test.cpp std_map.cpp
+Testing std::map (with range queries)
+  Checking correctness... pass.
+  Map size in bytes: 48
+  Section 1: Linear insertion points:   14.47
+  Section 2: Random usage points:       20.40
+      Uniform random usage points:      18.45
+      Zipf random usage points:         22.56
+  Section 3: Random range query points: 16.58
+      Uniform random usage points:      13.79
+      Zipf random usage points:         19.94
 
-Benchmark points: 12.30
+  Benchmark points: 19.22
 
-real    0m6.649s
-user    0m6.424s
-sys     0m0.220s
+real	0m3.944s
+user	0m3.820s
+sys	0m0.124s
+
 ```
+
+Pass the flag `-no_range_queries` to skip range queries.
 
 ## Interface
 
@@ -32,8 +44,10 @@ The file `example.cpp` gives an example implementation of this interface.
 The interface is:
 
 ```c
-typedef int64_t Key;
-typedef int64_t Value;
+extern const char* implementation_name;
+
+typedef uint64_t Key;
+typedef uint64_t Value;
 
 typedef struct KVPair {
     Key key;

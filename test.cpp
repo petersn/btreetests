@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cassert>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 #include <unordered_map>
 #include <map>
@@ -64,7 +65,7 @@ double sequential_insert(int reps, int count, bool reverse) {
 	}
 	double elapsed = t.stop();
 #ifdef DEBUG_EFFICIENCY
-	printf("%8.2fms sequential reps=%i keys=%i reverse=%i\n", 1e3 * elapsed, reps, count, reverse);
+	printf("  %8.2fms sequential reps=%i keys=%i reverse=%i\n", 1e3 * elapsed, reps, count, reverse);
 #endif
 	return elapsed;
 }
@@ -162,7 +163,7 @@ double random_usage(int action_count, int distinct_keys, Distribution dist, bool
 	map_free(m);
 	double elapsed = t.stop();
 #ifdef DEBUG_EFFICIENCY
-	printf("%8.2fms random actions=%i keys=%i dist=%i range=%i\n", 1e3 * elapsed, action_count, distinct_keys, (int)dist, include_range_lookups ? range_query_size : -1);
+	printf("  %8.2fms random actions=%i keys=%i dist=%i range=%i\n", 1e3 * elapsed, action_count, distinct_keys, (int)dist, include_range_lookups ? range_query_size : -1);
 #endif
 	return elapsed;
 }
@@ -175,7 +176,7 @@ void assert_equal(const char* message, T x, T y) {
 	assert(0);
 }
 
-void check_correctness() {
+void check_correctness(bool no_range_queries) {
 	std::vector<char> m_buffer(map_size);
 	void* m = static_cast<void*>(&m_buffer[0]);
 
@@ -184,7 +185,7 @@ void check_correctness() {
 	const int max_range_query_size = distinct_keys + 10;
 
 	std::vector<Action> actions;
-	populate_actions(actions, action_count, distinct_keys, ZIPF, true);
+	populate_actions(actions, action_count, distinct_keys, ZIPF, !no_range_queries);
 	std::vector<KVPair> range_results_buffer(max_range_query_size);
 
 	// When calling range queries we want a sentinel to check whether a write happened.
@@ -285,10 +286,13 @@ double weighted_points(const std::vector<std::pair<double, double>> scores, doub
 	return 1.0 / geometric_mean_time;
 }
 
-double run_benchmark() {
+double run_benchmark(bool no_range_queries) {
 //	Timer efficiency_timer;
 
+	double total_target_weight = 0;
+
 	// Section 1: Linear insertions followed by linear lookup. (Total weight: 0.5)
+	total_target_weight += 0.5;
 	std::vector<std::pair<double, double>> section1_scores;
 	for (bool reverse : {false, true}) {
 		for (auto p : {
@@ -307,6 +311,7 @@ double run_benchmark() {
 	}
 
 	// Section 2: Random insertions, deletions, and lookups. (Total weight: 2)
+	total_target_weight += 2.0;
 	std::vector<std::pair<double, double>> section2_scores;
 	std::vector<std::pair<double, double>> section2_scores_uniform;
 	std::vector<std::pair<double, double>> section2_scores_zipf;
@@ -327,51 +332,72 @@ double run_benchmark() {
 	std::vector<std::pair<double, double>> section3_scores;
 	std::vector<std::pair<double, double>> section3_scores_uniform;
 	std::vector<std::pair<double, double>> section3_scores_zipf;
-	for (auto dist : {UNIFORM, ZIPF}) {
-		for (auto distinct_keys : {10000, 1000000}) {
-			for (auto range_query_size : {4, 64, 1024}) {
-				int action_count = 200000;
-				if (range_query_size == 1024)
-					action_count /= 4;
-				section3_scores.emplace_back(
-					1 / 6.0,
-					random_usage(action_count, distinct_keys, dist, true, range_query_size)
-				);
-				(dist == UNIFORM ? section3_scores_uniform : section3_scores_zipf).push_back(section3_scores.back());
+	if (!no_range_queries) {
+		total_target_weight += 2.0;
+		for (auto dist : {UNIFORM, ZIPF}) {
+			for (auto distinct_keys : {10000, 1000000}) {
+				for (auto range_query_size : {4, 64, 1024}) {
+					int action_count = 200000;
+					if (range_query_size == 1024)
+						action_count /= 4;
+					section3_scores.emplace_back(
+						1 / 6.0,
+						random_usage(action_count, distinct_keys, dist, true, range_query_size)
+					);
+					(dist == UNIFORM ? section3_scores_uniform : section3_scores_zipf).push_back(section3_scores.back());
+				}
 			}
 		}
 	}
 
-	printf("Section 1: Linear insertion points:   %.2f\n", weighted_points(section1_scores, 0.5)         / 1.2);
-	printf("Section 2: Random usage points:       %.2f\n", weighted_points(section2_scores, 2.0)         / 0.7);
-	printf("    Uniform random usage points:      %.2f\n", weighted_points(section2_scores_uniform, 1.0) / 0.7);
-	printf("    Zipf random usage points:         %.2f\n", weighted_points(section2_scores_zipf, 1.0)    / 0.7);
-	printf("Section 3: Random range query points: %.2f\n", weighted_points(section3_scores, 2.0)         / 1.6);
-	printf("    Uniform random usage points:      %.2f\n", weighted_points(section3_scores_uniform, 1.0) / 1.6);
-	printf("    Zipf random usage points:         %.2f\n", weighted_points(section3_scores_zipf, 1.0)    / 1.6);
+	printf("  Section 1: Linear insertion points:   %.2f\n", weighted_points(section1_scores, 0.5)         / 1.2);
+	printf("  Section 2: Random usage points:       %.2f\n", weighted_points(section2_scores, 2.0)         / 0.7);
+	printf("      Uniform random usage points:      %.2f\n", weighted_points(section2_scores_uniform, 1.0) / 0.7);
+	printf("      Zipf random usage points:         %.2f\n", weighted_points(section2_scores_zipf, 1.0)    / 0.7);
+	if (!no_range_queries) {
+		printf("  Section 3: Random range query points: %.2f\n", weighted_points(section3_scores, 2.0)         / 1.6);
+		printf("      Uniform random usage points:      %.2f\n", weighted_points(section3_scores_uniform, 1.0) / 1.6);
+		printf("      Zipf random usage points:         %.2f\n", weighted_points(section3_scores_zipf, 1.0)    / 1.6);
+	}
 
 	std::vector<std::pair<double, double>> scores;
 	scores.insert(scores.end(), section1_scores.begin(), section1_scores.end());
 	scores.insert(scores.end(), section2_scores.begin(), section2_scores.end());
-	scores.insert(scores.end(), section3_scores.begin(), section3_scores.end());
-	return weighted_points(scores, 4.5);
+	if (!no_range_queries) {
+		scores.insert(scores.end(), section3_scores.begin(), section3_scores.end());
+	}
+	return weighted_points(scores, total_target_weight);
 }
 
-int main() {
-	std::cout << "Checking correctness... " << std::flush;
+int main(int argc, char** argv) {
+	bool no_range_queries = false;
+	for (int i = 1; i < argc; i++) {
+		if (strcmp(argv[i], "-no_range_queries") == 0) {
+			no_range_queries = true;
+			continue;
+		}
+		printf("unknown argument: %s\n", argv[i]);
+		printf("usage: %s [-no_range_queries]\n", argv[0] ? argv[0] : "test");
+		exit(2);
+	}
+
+	printf("Testing %s (%s range queries)\n",
+			implementation_name, no_range_queries ? "without" : "with");
+
+	std::cout << "  Checking correctness... " << std::flush;
 	for (int i = 0; i < 100; i++)
-		check_correctness();
+		check_correctness(no_range_queries);
 	std::cout << "pass." << std::endl;
 
-	std::cout << "Map size in bytes: " << map_size << std::endl;
+	std::cout << "  Map size in bytes: " << map_size << std::endl;
 	double best = 0;
 	for (int run_index = 0; run_index < NUM_RUNS; run_index++) {
-		double points = run_benchmark();
+		double points = run_benchmark(no_range_queries);
 		best = std::max(best, points);
 		if (NUM_RUNS != 1)
-			printf("Run %i points: %.2f\n", (run_index + 1), points);
+			printf("  Run %i points: %.2f\n", (run_index + 1), points);
 	}
 	std::cout << std::endl;
-	printf("Benchmark points: %.2f\n", best);
+	printf("  Benchmark points: %.2f\n", best);
 }
 

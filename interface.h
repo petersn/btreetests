@@ -1,6 +1,8 @@
 
 #include <stdint.h>
 
+extern const char* implementation_name;
+
 typedef uint64_t Key;
 typedef uint64_t Value;
 

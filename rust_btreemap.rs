@@ -4,6 +4,11 @@ use std::collections::BTreeMap;
 use std::ffi::c_void;
 use std::mem::transmute;
 use std::ops::Bound::Included;
+use std::os::raw::c_char;
+
+#[no_mangle]
+pub static mut implementation_name: *const c_char =
+    "Rust BTreeMap\0".as_bytes().as_ptr() as *const c_char;
 
 type Key = u64;
 type Value = u64;

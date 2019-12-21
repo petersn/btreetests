@@ -1,10 +1,11 @@
-#include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_map.h"
 
 extern "C" {
   #include "interface.h"
+  const char *implementation_name = "absl::flat_hash_map";
 }
 
-typedef absl::btree_map<Key, Value> Map;
+typedef absl::flat_hash_map<Key, Value> Map;
 
 size_t map_size = sizeof (Map);
 
@@ -52,18 +53,7 @@ size_t map_delete(void *m, Key key, Value *value_ptr) {
 }
 
 extern "C"
-size_t map_lookup_range(void *m, Key key_low, Key key_high,
-                        size_t max_pairs_to_retrieve, KVPair *key_value_pairs) {
-  Map *map = (Map *) m;
-  auto it = map->lower_bound(key_low);
-  size_t count;
-  for (count = 0; count < max_pairs_to_retrieve; count++) {
-    if (it == map->end()) break;
-    if (it->first > key_high) break;
-    if (key_value_pairs) {
-      key_value_pairs[count] = {it->first, it->second};
-    }
-    ++it;
-  }
-  return count;
+size_t map_lookup_range(void *, Key, Key, size_t, KVPair *) {
+  fprintf(stderr, "map_lookup_range on %s\n", implementation_name);
+  exit(1);
 }

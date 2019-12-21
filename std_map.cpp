@@ -5,6 +5,7 @@
 
 extern "C" {
 	#include "interface.h"
+	const char* implementation_name = "std::map";
 }
 
 typedef std::map<Key, Value> Map;
@@ -16,7 +17,7 @@ extern "C" void map_alloc(void* m) {
 }
 
 extern "C" void map_free(void* m) {
-	static_cast<Map*>(m)->~map();
+	static_cast<Map*>(m)->~Map();
 }
 
 extern "C" void map_assign(void* m, Key key, Value value) {
