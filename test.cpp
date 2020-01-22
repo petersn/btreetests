@@ -1,6 +1,7 @@
 // Testing
 
 #include <cmath>
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
@@ -14,8 +15,6 @@
 extern "C" {
 	#include "interface.h"
 }
-
-//#define DEBUG_EFFICIENCY
 
 constexpr int NUM_RUNS = 1;
 
@@ -50,23 +49,20 @@ struct Timer {
 	}
 };
 
-double sequential_insert(int reps, int count, bool reverse) {
+double sequential_insert(int reps, int key_count, bool reverse) {
 	std::vector<char> m_buffer(map_size);
 	void* m = static_cast<void*>(&m_buffer[0]);
 	Timer t;
 	for (int r = 0; r < reps; r++) {
 		map_alloc(m);
-		for (int i = 0; i < count; i++)
+		for (int i = 0; i < key_count; i++)
 			map_assign(m, reverse ? -i : i, i);
 		Value v;
-		for (int i = 0; i < count; i++)
+		for (int i = 0; i < key_count; i++)
 			map_lookup(m, reverse ? -i : i, &v);
 		map_free(m);
 	}
 	double elapsed = t.stop();
-#ifdef DEBUG_EFFICIENCY
-	printf("  %8.2fms sequential reps=%i keys=%i reverse=%i\n", 1e3 * elapsed, reps, count, reverse);
-#endif
 	return elapsed;
 }
 
@@ -132,40 +128,71 @@ void populate_actions(
 	}
 }
 
-double random_usage(int action_count, int distinct_keys, Distribution dist, bool include_range_lookups, int range_query_size) {
+double time_actions(int reps, std::vector<Action>& actions, int max_range_result_size) {
 	std::vector<char> m_buffer(map_size);
 	void* m = static_cast<void*>(&m_buffer[0]);
 
+	std::vector<KVPair> range_results_buffer(max_range_result_size);
+	Timer t;
+	for (int r = 0; r < reps; r++) {
+		map_alloc(m);
+		for (auto& action : actions) {
+			switch (action.kind) {
+				case ASSIGN:
+					map_assign(m, action.key, action.value);
+					break;
+				case LOOKUP:
+					map_lookup(m, action.key, &action.value);
+					break;
+				case DELETE:
+					map_delete(m, action.key, &action.value);
+					break;
+				case RANGE_LOOKUP:
+					map_lookup_range(m, action.key, action.key_high, max_range_result_size, &range_results_buffer[0]);
+					break;
+				default: assert(0);
+			}
+		}
+		map_free(m);
+	}
+	return t.stop();
+}
+
+double random_usage(int action_count, int distinct_keys, Distribution dist, bool include_range_lookups, int range_query_size) {
 	// To reduce the effect of generating random data during the test pregenerate all the actions.
 	std::vector<Action> actions;
 	populate_actions(actions, action_count, distinct_keys, dist, include_range_lookups);
-	std::vector<KVPair> range_results_buffer(distinct_keys);
 
-	Timer t;
-	map_alloc(m);
-	for (auto& action : actions) {
-		switch (action.kind) {
-			case ASSIGN:
-				map_assign(m, action.key, action.value);
-				break;
-			case LOOKUP:
-				map_lookup(m, action.key, &action.value);
-				break;
-			case DELETE:
-				map_delete(m, action.key, &action.value);
-				break;
-			case RANGE_LOOKUP:
-				map_lookup_range(m, action.key, action.key_high, range_query_size, &range_results_buffer[0]);
-				break;
-			default: assert(0);
-		}
+	return time_actions(1, actions, range_query_size);
+}
+
+double fifo_lifo_usage(int reps, int key_count, bool fifo, bool reverse) {
+	std::vector<Action> actions(2 * key_count);
+	for (int i = 0; i < key_count; i++) {
+		actions[i            ].kind = ActionKind::ASSIGN;
+		actions[i + key_count].kind = ActionKind::DELETE;
 	}
-	map_free(m);
-	double elapsed = t.stop();
-#ifdef DEBUG_EFFICIENCY
-	printf("  %8.2fms random actions=%i keys=%i dist=%i range=%i\n", 1e3 * elapsed, action_count, distinct_keys, (int)dist, include_range_lookups ? range_query_size : -1);
-#endif
-	return elapsed;
+	// Shuffle the middle of the array, to intersperse assignments and deletions a little.
+	// Even in the worst case of this shuffle turning into a reverse we still will won't delete from an empty map.
+	std::shuffle(
+		actions.begin() + key_count / 2,
+		actions.end() - key_count / 2,
+		rng
+	);
+
+	auto get_key = [&](int index, bool reverse) {
+		return reverse ? key_count - index : index;
+	};
+
+	// Fill in appropriate keys.
+	int insert_count = 0, delete_count = 0;
+	for (auto& action : actions) {
+		if (action.kind == ActionKind::ASSIGN)
+			action.key = get_key(insert_count++, reverse);
+		else
+			action.key = get_key(delete_count++, reverse == fifo);
+	}
+	return time_actions(reps, actions, 0);
 }
 
 template <typename T>
@@ -238,13 +265,13 @@ void check_correctness(bool no_range_queries) {
 				while (it != reference_map.end() and (*it).first <= action.key_high and range_query_size--) {
 					auto p = *it++;
 					if (do_get_value) {
-						assert_equal<Key>
-							("bad range result key",
+						assert_equal<Key>(
+							"bad range result key",
 							range_results_buffer[reference_hit_count].key,
 							p.first
 						);
-						assert_equal<Key>
-							("bad range result value",
+						assert_equal<Key>(
+							"bad range result value",
 							range_results_buffer[reference_hit_count].value,
 							p.second
 						);
@@ -273,22 +300,14 @@ double weighted_points(const std::vector<std::pair<double, double>> scores, doub
 			std::cerr << "WARNING: Unexpectedly low time on a subtask!" << std::endl;
 			std::cerr << "This might throw off the geometric mean." << std::endl;
 		}
-#ifdef DEBUG_EFFICIENCY
-		std::cout << " ms: " << 1e3 * p.second << std::endl;
-#endif
 	}
 	assert(fabs(total_weight - target_weight) < 1e-6);
-#ifdef DEBUG_EFFICIENCY
-//	std::cout << "Benchmark efficiency: " << total_benchmark_time / efficiency_timer.stop() << std::endl;
-#endif
 	double geometric_mean_time = std::exp(log_accum / total_weight);
 
 	return 1.0 / geometric_mean_time;
 }
 
 double run_benchmark(bool no_range_queries) {
-//	Timer efficiency_timer;
-
 	double total_target_weight = 0;
 
 	// Section 1: Linear insertions followed by linear lookup. (Total weight: 0.5)
@@ -328,10 +347,27 @@ double run_benchmark(bool no_range_queries) {
 		}
 	}
 
-	// Section 3: Random range lookups. (Total weight: 2)
+	// Section 3: FIFO/LIFO usage. (Total weight: 1)
+	total_target_weight += 1.0;
 	std::vector<std::pair<double, double>> section3_scores;
-	std::vector<std::pair<double, double>> section3_scores_uniform;
-	std::vector<std::pair<double, double>> section3_scores_zipf;
+	for (bool reverse : {false, true}) {
+		for (bool fifo : {false, true}) {
+			for (auto p : {
+				std::pair<int, int>
+				{1000, 1000},
+				{100, 10000},
+				{10, 100000},
+				{1, 1000000},
+			}) {
+				section3_scores.emplace_back(1 / 16.0, fifo_lifo_usage(p.first, p.second, fifo, reverse));
+			}
+		}
+	}
+
+	// Section 4: Random range lookups. (Total weight: 2)
+	std::vector<std::pair<double, double>> section4_scores;
+	std::vector<std::pair<double, double>> section4_scores_uniform;
+	std::vector<std::pair<double, double>> section4_scores_zipf;
 	if (!no_range_queries) {
 		total_target_weight += 2.0;
 		for (auto dist : {UNIFORM, ZIPF}) {
@@ -340,11 +376,11 @@ double run_benchmark(bool no_range_queries) {
 					int action_count = 200000;
 					if (range_query_size == 1024)
 						action_count /= 4;
-					section3_scores.emplace_back(
+					section4_scores.emplace_back(
 						1 / 6.0,
 						random_usage(action_count, distinct_keys, dist, true, range_query_size)
 					);
-					(dist == UNIFORM ? section3_scores_uniform : section3_scores_zipf).push_back(section3_scores.back());
+					(dist == UNIFORM ? section4_scores_uniform : section4_scores_zipf).push_back(section4_scores.back());
 				}
 			}
 		}
@@ -354,17 +390,19 @@ double run_benchmark(bool no_range_queries) {
 	printf("  Section 2: Random usage points:       %.2f\n", weighted_points(section2_scores, 2.0)         / 0.7);
 	printf("      Uniform random usage points:      %.2f\n", weighted_points(section2_scores_uniform, 1.0) / 0.7);
 	printf("      Zipf random usage points:         %.2f\n", weighted_points(section2_scores_zipf, 1.0)    / 0.7);
+	printf("  Section 3: FIFO/LIFO usage points:    %.2f\n", weighted_points(section3_scores, 1.0)         / 0.4);
 	if (!no_range_queries) {
-		printf("  Section 3: Random range query points: %.2f\n", weighted_points(section3_scores, 2.0)         / 1.6);
-		printf("      Uniform random usage points:      %.2f\n", weighted_points(section3_scores_uniform, 1.0) / 1.6);
-		printf("      Zipf random usage points:         %.2f\n", weighted_points(section3_scores_zipf, 1.0)    / 1.6);
+		printf("  Section 4: Random range query points: %.2f\n", weighted_points(section4_scores, 2.0)         / 1.6);
+		printf("      Uniform random usage points:      %.2f\n", weighted_points(section4_scores_uniform, 1.0) / 1.6);
+		printf("      Zipf random usage points:         %.2f\n", weighted_points(section4_scores_zipf, 1.0)    / 1.6);
 	}
 
 	std::vector<std::pair<double, double>> scores;
 	scores.insert(scores.end(), section1_scores.begin(), section1_scores.end());
 	scores.insert(scores.end(), section2_scores.begin(), section2_scores.end());
+	scores.insert(scores.end(), section3_scores.begin(), section3_scores.end());
 	if (!no_range_queries) {
-		scores.insert(scores.end(), section3_scores.begin(), section3_scores.end());
+		scores.insert(scores.end(), section4_scores.begin(), section4_scores.end());
 	}
 	return weighted_points(scores, total_target_weight);
 }
