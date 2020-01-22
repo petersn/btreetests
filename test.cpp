@@ -187,10 +187,17 @@ double fifo_lifo_usage(int reps, int key_count, bool fifo, bool reverse) {
 	// Fill in appropriate keys.
 	int insert_count = 0, delete_count = 0;
 	for (auto& action : actions) {
-		if (action.kind == ActionKind::ASSIGN)
-			action.key = get_key(insert_count++, reverse);
-		else
-			action.key = get_key(delete_count++, reverse == fifo);
+		if (fifo) {
+			if (action.kind == ActionKind::ASSIGN)
+				action.key = get_key(insert_count++, reverse);
+			else
+				action.key = get_key(delete_count++, reverse);
+		} else {
+			if (action.kind == ActionKind::ASSIGN)
+				action.key = get_key(insert_count++, reverse);
+			else
+				action.key = get_key(--insert_count, reverse);
+		}
 	}
 	return time_actions(reps, actions, 0);
 }
