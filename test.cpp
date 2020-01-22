@@ -16,7 +16,8 @@ extern "C" {
 	#include "interface.h"
 }
 
-constexpr int NUM_RUNS = 1;
+int num_runs = 1;
+bool quiet = false;
 
 std::mt19937 rng(123456789);
 
@@ -393,15 +394,17 @@ double run_benchmark(bool no_range_queries) {
 		}
 	}
 
-	printf("  Section 1: Linear insertion points:   %.2f\n", weighted_points(section1_scores, 0.5)         / 1.2);
-	printf("  Section 2: Random usage points:       %.2f\n", weighted_points(section2_scores, 2.0)         / 0.7);
-	printf("      Uniform random usage points:      %.2f\n", weighted_points(section2_scores_uniform, 1.0) / 0.7);
-	printf("      Zipf random usage points:         %.2f\n", weighted_points(section2_scores_zipf, 1.0)    / 0.7);
-	printf("  Section 3: FIFO/LIFO usage points:    %.2f\n", weighted_points(section3_scores, 1.0)         / 0.4);
-	if (!no_range_queries) {
-		printf("  Section 4: Random range query points: %.2f\n", weighted_points(section4_scores, 2.0)         / 1.6);
-		printf("      Uniform random usage points:      %.2f\n", weighted_points(section4_scores_uniform, 1.0) / 1.6);
-		printf("      Zipf random usage points:         %.2f\n", weighted_points(section4_scores_zipf, 1.0)    / 1.6);
+	if (!quiet) {
+		printf("  Section 1: Linear insertion points:   %.2f\n", weighted_points(section1_scores, 0.5)         / 1.2);
+		printf("  Section 2: Random usage points:       %.2f\n", weighted_points(section2_scores, 2.0)         / 0.7);
+		printf("      Uniform random usage points:      %.2f\n", weighted_points(section2_scores_uniform, 1.0) / 0.7);
+		printf("      Zipf random usage points:         %.2f\n", weighted_points(section2_scores_zipf, 1.0)    / 0.7);
+		printf("  Section 3: FIFO/LIFO usage points:    %.2f\n", weighted_points(section3_scores, 1.0)         / 0.4);
+		if (!no_range_queries) {
+			printf("  Section 4: Random range query points: %.2f\n", weighted_points(section4_scores, 2.0)         / 1.6);
+			printf("      Uniform random usage points:      %.2f\n", weighted_points(section4_scores_uniform, 1.0) / 1.6);
+			printf("      Zipf random usage points:         %.2f\n", weighted_points(section4_scores_zipf, 1.0)    / 1.6);
+		}
 	}
 
 	std::vector<std::pair<double, double>> scores;
@@ -421,28 +424,48 @@ int main(int argc, char** argv) {
 			no_range_queries = true;
 			continue;
 		}
+		if (strcmp(argv[i], "-quiet") == 0) {
+			quiet = true;
+			continue;
+		}
+		if (strcmp(argv[i], "-num_runs") == 0 && i+1 < argc) {
+			i++;
+			char *end;
+			errno = 0;
+			num_runs = strtol(argv[i], &end, 10);
+			if (errno == 0 && *end == '\0' && num_runs > 0)
+				continue;
+		}
 		printf("unknown argument: %s\n", argv[i]);
-		printf("usage: %s [-no_range_queries]\n", argv[0] ? argv[0] : "test");
+		printf("usage: %s [-no_range_queries] [-quiet] [-num_runs n]\n",
+		       argv[0] ? argv[0] : "test");
 		exit(2);
 	}
 
-	printf("Testing %s (%s range queries)\n",
-			implementation_name, no_range_queries ? "without" : "with");
+	printf("Testing %s (%s range queries, num_runs=%d)\n",
+			implementation_name, no_range_queries ? "without" : "with",
+			num_runs);
 
-	std::cout << "  Checking correctness... " << std::flush;
+	if (!quiet) std::cout << "  Checking correctness... " << std::flush;
 	for (int i = 0; i < 100; i++)
 		check_correctness(no_range_queries);
-	std::cout << "pass." << std::endl;
+	if (!quiet) std::cout << "pass." << std::endl;
 
-	std::cout << "  Map size in bytes: " << map_size << std::endl;
+	if (!quiet) std::cout << "  Map size in bytes: " << map_size << std::endl;
 	double best = 0;
-	for (int run_index = 0; run_index < NUM_RUNS; run_index++) {
+	double worst = 1e100;
+	for (int run_index = 0; run_index < num_runs; run_index++) {
 		double points = run_benchmark(no_range_queries);
 		best = std::max(best, points);
-		if (NUM_RUNS != 1)
+		worst = std::min(worst, points);
+		if (!quiet && num_runs != 1)
 			printf("  Run %i points: %.2f\n", (run_index + 1), points);
 	}
-	std::cout << std::endl;
-	printf("  Benchmark points: %.2f\n", best);
+	if (!quiet) std::cout << std::endl;
+	if (num_runs == 1) {
+		printf("  Benchmark points: %.2f\n", best);
+	} else {
+		printf("  Benchmark points: best: %.2f, worst: %.2f\n", best, worst);
+	}
 }
 
